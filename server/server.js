@@ -1,8 +1,9 @@
+const path = require('node:path');
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3');
-const path = require('path');
 const minimist = require('minimist');
 const axios = require('axios');
 const open = require('open');
@@ -61,6 +62,8 @@ const db = new sqlite3.Database('./web-session-storage.db', (err) => {
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'mikupad.html'));
 });
+
+app.use(express.static(path.join(__dirname, '..')));
 
 // GET route to get the server version
 app.get('/version', (req, res) => {
