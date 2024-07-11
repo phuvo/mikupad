@@ -17,12 +17,14 @@
 		"react": "https://esm.sh/react@18",
 		"react-dom/client": "https://esm.sh/react-dom@18/client?external=react",
 		"htm/react": "https://esm.sh/htm@3/react?external=react&react=18",
+		"highlight.js/lib/core": "./markjar/node_modules/@highlightjs/cdn-assets/es/core.js",
+		"morphdom": "./markjar/node_modules/morphdom/dist/morphdom-esm.js",
 		"scrollview-resize": "https://esm.sh/scrollview-resize@1.0.2"
 	}
 }
 </script>
+<link rel="stylesheet" href="./markjar/node_modules/@highlightjs/cdn-assets/styles/default.css" />
 <style>
-
 html {
 	--color-miku: #009bb3;
 	--color-base-0: oklch(0.20 0.02 60);
@@ -186,7 +188,64 @@ body {
 	}
 }
 
-#prompt-area, #prompt-overlay {
+.markjar {
+	white-space: preserve;
+	word-wrap: break-word;
+	* {
+		box-sizing: border-box;
+	}
+	.mj-line {
+		min-height: 1lh;
+	}
+}
+
+.hanging-markers {
+	.mj-block {
+		display: inline-block;
+		text-align: right;
+	}
+
+	.mj-hash {
+		transition: margin .2s;
+	}
+	.mj-h1-hash,
+	.mj-h2-hash,
+	.mj-h3-hash {
+		font-family: "Cascadia Code", monospace;
+		font-size: .9em;
+		font-weight: 600;
+	}
+	.mj-h1-hash {
+		margin-left: -2ch;
+	}
+	.mj-h2-hash {
+		margin-left: -3ch;
+	}
+	.mj-h3-hash {
+		margin-left: -4ch;
+	}
+
+	.mj-bullet {
+		transition: margin .2s;
+	}
+	.mj-ol-list-d1 {
+		width: 1.1em;
+		margin-left: -1.1em;
+		padding-right: .1em;
+	}
+	.mj-ol-list-dx {
+		width: 1.6em;
+		margin-left: -1.6em;
+		padding-right: .1em;
+	}
+	.mj-ul-list {
+		margin-left: -2ch;
+		font-family: "Cascadia Code", monospace;
+		font-size: .9em;
+	}
+}
+
+#prompt-area, #prompt-editor, #prompt-overlay {
 	flex: 1;
 	border: none;
 	outline: none;
@@ -201,9 +260,9 @@ body {
 	text-size-adjust: 100%;
 	-webkit-text-size-adjust: 100%;
 	-moz-text-size-adjust: 100%;
-	/*white-space: break-spaces;*/
 	word-wrap: break-word;
 }
+
 html.monospace-dark #prompt-area,
 html.monospace-dark #memory-area,
 html.monospace-dark #an-area,
@@ -4405,6 +4464,7 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 	const [undoHovered, setUndoHovered] = useState(false);
 	const [showProbs, setShowProbs] = useState(true);
 	const [cancel, setCancel] = useState(null);
+	const [isMarkdownEditorEnabled, setMarkdownEditorEnabled] = usePersistentState('markdownEditor', false);
 	const [spellCheck, setSpellCheck] = usePersistentState('spellCheck', false);
 	const [attachSidebar, setAttachSidebar] = usePersistentState('attachSidebar', false);
 	const [showProbsMode, setShowProbsMode] = usePersistentState('showProbsMode', 0);
@@ -4457,7 +4517,7 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 	const [authorNoteTokens, setAuthorNoteTokens] = useSessionState('authorNoteTokens', defaultPresets.authorNoteTokens);
 	const [authorNoteDepth, setAuthorNoteDepth] = useSessionState('authorNoteDepth', defaultPresets.authorNoteDepth);
 	const [worldInfo, setWorldInfo] = useSessionState('worldInfo', defaultPresets.worldInfo);
-
+	const [markdownEditor, setMarkdownEditor] = useState(null);
 
 
 	function replacePlaceholders(string,placeholders) {
@@ -4605,7 +4665,6 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 	},[modalState["context"],worldInfo.prefix,memoryTokens.worldInfo,worldInfo.suffix,cancel,endpoint,endpointAPI])
 
 
-
 	const insertTemplate = (sysInst) => {
 		// most of this function is shamelessly stolen from culturedniichan's deleted pull
 		// request for a similar implementation of instruct templates:
@@ -4660,6 +4719,15 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 			[modalKey]: false,
 		}));
 	};
+
+
+	useEffect(async () => {
+		if (isMarkdownEditorEnabled) {
+			const { Markjar } = await import('./markjar/dist/markjar.js');
+			const markjar = new Markjar(document.querySelector('#prompt-editor'));
+			setMarkdownEditor(markjar);
+		}
+	}, [isMarkdownEditorEnabled]);
 
 
 	const promptText = useMemo(() => joinPrompt(promptChunks), [promptChunks]);
@@ -5156,20 +5224,39 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 		}
 	}, [currentPromptChunk, showProbs]);
 
+	function getEditorText() {
+		if (isMarkdownEditorEnabled) {
+			return markdownEditor.getText();
+		}
+		return promptArea.current.value;
+	}
+
+	function setEditorText(text) {
+		if (isMarkdownEditorEnabled) {
+			markdownEditor.setText(text);
+		} else {
+			promptArea.current.value = text;
+		}
+	}
+
 	// Update the textarea in an uncontrolled way so the user doesn't lose their
 	// selection or cursor position during prediction
 	useLayoutEffect(() => {
-		const elem = promptArea.current;
-		if (elem.value === promptText) {
+		if (isMarkdownEditorEnabled && !markdownEditor) {
 			return;
-		} else if (elem.value.length && promptText.startsWith(elem.value)) {
+		}
+		const elem = promptArea.current;
+		const currentText = getEditorText();
+		if (currentText === promptText) {
+			return;
+		} else if (currentText.length && promptText.startsWith(currentText)) {
 			const isTextSelected = elem.selectionStart !== elem.selectionEnd;
 			const oldHeight = elem.scrollHeight;
 			const atBottom = (elem.scrollTarget ?? elem.scrollTop) + elem.clientHeight + 1 > oldHeight;
-			const oldLen = elem.value.length;
+			const oldLen = currentText.length;
 			// disable preserveCursorPosition in chatMode
 			if ( (!isTextSelected && !preserveCursorPosition) || chatMode) {
-				elem.value = promptText;
+				setEditorText(promptText);
 			} else {
 				elem.setRangeText(promptText.slice(oldLen), oldLen, oldLen, 'preserve');
 			}
@@ -5186,9 +5273,9 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 				});
 			}
 		} else {
-			elem.value = promptText;
+			setEditorText(promptText);
 		}
-	}, [promptText]);
+	}, [isMarkdownEditorEnabled, markdownEditor, promptText]);
 
 	useLayoutEffect(() => {
 		if (cancel)
@@ -5381,13 +5468,13 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 		};
 	}, []);
 
-	function onInput({ target }) {
+	function onInput() {
 		setPromptChunks(oldPrompt => {
 			const start = [];
 			const end = [];
 			const oldPromptLength = oldPrompt.length;
 			oldPrompt = [...oldPrompt];
-			let newValue = target.value;
+			let newValue = getEditorText();
 
 			while (oldPrompt.length) {
 				const chunk = oldPrompt[0];
@@ -5640,13 +5727,23 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 				onClick=${() => toggleModal("searchAndReplace")}>
 				<${SVG_SearchAndReplace} style=${{"height":"1.3em"}} />
 			</button>
-			<textarea
-				ref=${promptArea}
-				readOnly=${!!cancel}
-				spellCheck=${spellCheck}
-				id="prompt-area"
-				onInput=${onInput}
-				onScroll=${onScroll}/>
+			${isMarkdownEditorEnabled ? html`
+				<div
+					ref=${promptArea}
+					id="prompt-editor"
+					className="hanging-markers"
+					onInput=${onInput}
+				/>
+			` : html`
+				<textarea
+					ref=${promptArea}
+					readOnly=${!!cancel}
+					spellCheck=${spellCheck}
+					id="prompt-area"
+					onInput=${onInput}
+					onScroll=${onScroll}
+				/>
+			`}
 			<div ref=${promptOverlay} id="prompt-overlay" aria-hidden>
 				${highlightGenTokens || showProbsMode !== -1 ? html`
 					${promptChunks.map((chunk, i) => {
@@ -5995,6 +6092,8 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 		<${EditorPreferencesModal}
 			isOpen=${modalState.prompt}
 			closeModal=${() => closeModal("prompt")}>
+			<${Checkbox} label="Use Markdown editor"
+				value=${isMarkdownEditorEnabled} onValueChange=${setMarkdownEditorEnabled}/>
 			<${Checkbox} label="Enable spell checking"
 				value=${spellCheck} onValueChange=${setSpellCheck}/>
 			<${Checkbox} label="Attach sidebar"
