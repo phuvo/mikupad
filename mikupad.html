@@ -4691,20 +4691,8 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 						+ selectedText 
 						+ suffix.replace(/\\n/g,'\n')
 						+ textAfter;
-
-		elem.value = finalText;
-
-		let newCursorPos;
-		if (selectedText.length === 0) {
-			newCursorPos = startPos + prefix.length;
-		} else {
-			newCursorPos = startPos 
-				+ prefix.length
-				+ selectedText.length 
-				+ suffix.length;
-		}
-		elem.setSelectionRange(0, 2);
-		onInput({ target: elem });
+		setEditorText(finalText);
+		onInput();
 	}
 
 	const toggleModal = (modalKey) => {
@@ -4726,6 +4714,9 @@ export function App({ sessionStorage, templateStorage, useSessionState, useDBTem
 			const { Markjar } = await import('./markjar/dist/markjar.js');
 			const markjar = new Markjar(document.querySelector('#prompt-editor'));
 			setMarkdownEditor(markjar);
+		} else if (markdownEditor) {
+			markdownEditor.destroy();
+			setMarkdownEditor(null);
 		}
 	}, [isMarkdownEditorEnabled]);
 
